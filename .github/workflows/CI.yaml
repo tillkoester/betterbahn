@@ -10,7 +10,7 @@ jobs:
       - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v6
         with:
-          node-version: '25'
+          node-version: "25"
       - name: Install modules
         run: pnpm install
       - name: Run Typecheck
@@ -18,3 +18,28 @@ jobs:
       - name: Run Oxlint
         run: pnpm run oxlint
       - run: pnpm run build
+      - name: Assemble runtime app directory for third-party packaging (see \#183)
+        run: |
+          rm -rf app-build
+          mkdir -p app-build/.next
+          mkdir -p app-build/node_modules/.pnpm
+
+          # Use Next standalone output as the base runtime layout (same starting point as Docker).
+          rsync -aL .next/standalone/ app-build/
+          # Standalone does not include static assets, so copy them explicitly.
+          cp -a .next/static app-build/.next/static
+          # This package contains runtime station data that is required but not bundled in standalone.
+          rsync -aL node_modules/.pnpm/db-hafas-stations@2.0.0/ app-build/node_modules/.pnpm/db-hafas-stations@2.0.0/
+          # Dereference pnpm links so extracted ZIPs work with standard unzip tools.
+          rsync -aL node_modules/.pnpm/node_modules/ app-build/node_modules/
+      - name: Create build.zip
+        run: |
+          rm -f build.zip
+          cd app-build
+          zip -r ../build.zip .
+      - name: Upload build.zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-zip
+          path: build.zip
+          if-no-files-found: error
